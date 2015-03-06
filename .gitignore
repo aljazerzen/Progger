@@ -23,6 +23,7 @@
 *.lib
 
 # Executables
-*.exe
 *.out
-*.app
+
+# Config and save files
+*.lock
