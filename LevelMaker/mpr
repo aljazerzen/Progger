@@ -1,0 +1,3 @@
+#!/bin/bash
+
+g++ LevelMaker.cpp Opts.cpp -l ncurses -o LevelMaker && ./LevelMaker
