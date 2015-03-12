@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <vector>
+#include <dirent.h>
 
 using namespace std;
 
@@ -31,6 +32,9 @@ const int NAME_LENGTH=32;
 const int DIS_LENGTH=68;
 const int CON_SIZE=1024;
 const int PROG_SIZE=1024;
+
+const unsigned char LLIMIT = 32;
+const unsigned char ULIMIT = 177;
 
 const char *menuFile="menus";
 
@@ -95,7 +99,7 @@ const int FONT_SIZES[]={10,7,3,30};
 
 // defined sizes giving structure to Level (changing with resolution )
 const int DEF_PROGRAM_QT_SIZE=12;
-const int DEF_PROGRAM_FU_SIZE=35;
+const int DEF_PROGRAM_FU_SIZE=25;
 const int DEF_PROGRAM_CB_SIZE=30;
 
 const int DEF_PROGRAM_IB_MARGIN=5;
@@ -509,6 +513,9 @@ class Structure {
 					Puzzle *newPuzz = new Puzzle(n, d, co);
 					puzzles.push_back(newPuzz);
 				}		
+
+				unsigned char calcCrc(FILE* file);
+
 				void load();
 		
 				char* getPuzzleName(unsigned int puzzle);
@@ -1550,15 +1557,19 @@ int Level::gridReset(bool resetFunctions=1) {
 	cXoffsetLM=0;
 	cYoffsetLM=0;
 	cDoffsetLM=0;
-	
-	int ret,color,cu=0;
-	ret=sscanf(con+cu,"%2x%2x%2x%2x%2x", &gxSize, &gySize, &cX, &cY, &cD);
-	cu+=10;
 
-	for(int c=0;ret!=EOF && c<gySize;++c) {
-		for(int c1=0;ret!=EOF && c1<gxSize;++c1) {
-			ret=sscanf(con+cu,"%4x",&grd[c1][c]);
-			cu+=4;
+	int color,cu=0;
+	
+	gxSize= con[cu++]-1;
+	gySize= con[cu++]-1;
+	cX= con[cu++]-1;
+	cY= con[cu++]-1;
+	cD= con[cu++]-1;
+
+	for(int c=0;c<gySize;++c) {
+		for(int c1=0;c1<gxSize;++c1) {
+			grd[c1][c] = (con[cu++]-1) << 8;
+			grd[c1][c] |= con[cu++]-1;
 
 			if((grd[c1][c] & 0x000000FF) == TIL_STAR) {
 				starsToGet++;
@@ -1578,17 +1589,16 @@ int Level::gridReset(bool resetFunctions=1) {
 	insBarHeight=0;
 	insBarWidth=0;
 
-	ret=sscanf(con+cu,"%2x",&allowedInsCnt);
-	cu+=2;
+	allowedInsCnt=con[cu++]-1;
 
 	if(allowedInsCnt!=0){
 		for(int c=0;c<COLOR_NUMBER;c++) {
 			memset(insBar[c],0x0,sizeof(insBar[0]));
 		}
 	
-		for(int c=0;c<allowedInsCnt && ret!=EOF;++c) {		
-			ret=sscanf(con+cu,"%4x",&inp);
-			cu+=4;
+		for(int c=0;c<allowedInsCnt;++c) {		
+			inp =(con[cu++]-1 )<< 8;
+			inp|=con[cu++]-1;
 			insBar[(inp & 0xFF00) >> 8][inp & 0xFF]=inp;
 		}
 
@@ -1654,13 +1664,10 @@ int Level::gridReset(bool resetFunctions=1) {
 
 		while(removeFunction()!=-1) ;
 
-		ret=sscanf(con+cu,"%2x",&functionCnt);
-		cu+=2;
-
-		for(int c=0;c<functionCnt && ret!=EOF;++c) {		
-			ret=sscanf(con+cu,"%2x",&inp);
-			cu+=2;
-			addFunction(inp);
+		functionCnt=con[cu++]-1;
+		
+		for(int c=0;c<functionCnt;++c) {		
+			addFunction(con[cu++]-1);
 		}
 
 		int cu2=0,ret2;
@@ -1680,11 +1687,8 @@ int Level::gridReset(bool resetFunctions=1) {
 		insBarWidth++;
 	}
 
-
 	recalculateNeeded=1;
 	gTexture.free();
-	if(ret==EOF) 
-		return -1;
 
 	return 0;
 }
@@ -2564,31 +2568,100 @@ void Menu::show(int alpha, SDL_Rect *box) {
 	}
 }
 
+unsigned char Structure::Package::calcCrc(FILE* file) {
+
+	int sum = 0;
+	char inp =0;
+
+	while(inp != EOF) {
+		sum = (sum*7) & 0xff;
+		inp = fgetc(file);
+		sum = (sum+inp) & 0xff;
+	}
+
+	return sum;
+}
+
 void Structure::Package::load() {
-	char fileName[32];
-	fileName[0]='\0';
-	strcat(fileName,path);
+	char *fileName = (char*) malloc(strlen(path)+strlen(name)+6);
+	strcpy(fileName,path);
 	strcat(fileName,name);
 	strcat(fileName,".pack");
 
 	FILE *sFile=fopen(fileName,"r");
 
 	if(sFile==NULL) {
-		printf("Pack at '%s' cannot be found\n", fileName);
+		fprintf(stderr,"Pack at '%s' cannot be found\n", fileName);
 		return;
 	}
-	int ret;
-	char tnam[NAME_LENGTH],tdis[DIS_LENGTH],tcon[CON_SIZE];
-	
-	ret=fscanf(sFile,"%s %s %s", tnam, tdis, tcon);
-	while(ret!=EOF) {
-		replace(tnam,'_',' ');
-		replace(tdis,'_',' ');
+
+	int crc = calcCrc(sFile);
+
+	if(crc != 0xff && 0) {
+		fprintf(stderr,"Pack at '%s' is not a valid Progger pack\n", fileName);
+		return;
+	}
+
+	fseek(sFile,0,SEEK_SET);
+
+	int l=fgetc(sFile);
+
+	while(l!=EOF) {
+
+		char tnam[NAME_LENGTH],tdis[DIS_LENGTH],tcon[CON_SIZE];
+		int cu=0;
+
+		for(int c=0;c<l;c++) {
+			tnam[c]=fgetc(sFile) + LLIMIT;
+		}
+		tnam[l]='\0';
+
+		l=fgetc(sFile);
+
+		if(l==EOF)
+			break;
+
+		for(int c=0;c<l;c++) {
+			tdis[c]=fgetc(sFile) + LLIMIT;
+		}
+		tdis[l]='\0';
+
+		// Level data 
+		tcon[cu++]=1+fgetc(sFile); //width
+		tcon[cu++]=1+fgetc(sFile); //height
+		tcon[cu++]=1+fgetc(sFile); //cux
+		tcon[cu++]=1+fgetc(sFile); //cuy
+		tcon[cu++]=1+fgetc(sFile); //cud
+
+		for(int c=(int)(tcon[0]-1)*(int)(tcon[1]-1)*2;c--;) {
+			tcon[cu++]= 1+fgetc(sFile);
+		}
+
+		// ----[ Allowed instructions ]----
+		tcon[cu++]=1 + fgetc(sFile);
+
+		for(int c=(tcon[cu-1]-1)*2;c--;) {
+			tcon[cu++]=1 + fgetc(sFile);
+		} 
+		
+		// ----[ Functions sizes ]----
+		tcon[cu++]=1 + fgetc(sFile);
+
+		for(int c=tcon[cu-1]-1;c--;) {
+			tcon[cu++]=1+fgetc(sFile);
+		}
+
+		tcon[cu]='\0';
+
 		addPuzzle(tnam,tdis,tcon);
-		ret=fscanf(sFile,"%s %s %s", tnam, tdis, tcon);
+	
+		// name lenght for next level(end if EOF)
+		l=fgetc(sFile);
 	}
 
 	fclose(sFile);
+	free(fileName);
+
 	loaded=1;
 }
 
@@ -2597,36 +2670,50 @@ bool Structure::Package::getDone() {
 }
 
 char* Structure::Package::getPuzzleName(unsigned int puzzle) {
+	if(loaded == 0)
+		return NULL;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	return puzzles[puzzle]->getName();
 }
 
 char* Structure::Package::getPuzzleDis(unsigned int puzzle) {
+	if(loaded == 0)
+		return NULL;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	return puzzles[puzzle]->getDis();
 }
 
 char* Structure::Package::getPuzzleCon(unsigned int puzzle) {
+	if(loaded == 0)
+		return NULL;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	return puzzles[puzzle]->getCon();
 }
 
 char* Structure::Package::getPuzzleProg(unsigned int puzzle) {
+	if(loaded == 0)
+		return NULL;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	return puzzles[puzzle]->getProg();
 }
 
 bool Structure::Package::getPuzzleDone(unsigned int puzzle) {
+	if(loaded == 0)
+		return 0;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	return puzzles[puzzle]->getDone();
 }
 
 void Structure::Package::setPuzzleProg(unsigned int puzzle, char *p) {
+	if(loaded == 0)
+		return;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	puzzles[puzzle]->setProg(p);
 }
 
 void Structure::Package::setPuzzleDone(unsigned int puzzle, bool d) {
+	if(loaded == 0)
+		return;
 	if(puzzle<0 || puzzle>=puzzles.size()) puzzle=0;
 	puzzles[puzzle]->setDone(d);
 
@@ -2644,30 +2731,31 @@ Structure::Structure(const char *pa) {
 void Structure::load() {
 	clear();
 
-	char fileName[32];
-	fileName[0]='\0';
-	strcat(fileName,path);
-	strcat(fileName,"packages.txt");
+	DIR *dir;
+	struct dirent *ent;
+	if ((dir = opendir (path)) != NULL) {
 
-	FILE *sFile=fopen(fileName,"r");
+		while ((ent = readdir (dir)) != NULL) {
 
-	if(sFile==NULL) {
-		printf("No pack structure found at %s\n", fileName);
-		return;
+			char *dot=rindex(ent->d_name, '.');
+			char tdis[]="";
+
+			if(dot!=NULL && strcmp(dot,".pack")==0) {
+				int l = strlen(ent->d_name) - strlen(dot);
+
+				char *packName = (char*) malloc(sizeof(char)*(l+1));
+				strncpy(packName,ent->d_name,l);
+
+				addPackage(packName,tdis);
+
+				free(packName);
+			}
+		}
+		closedir (dir);
+	} else {
+		/* could not open directory */
+		perror ("Pack directory");
 	}
-
-	int ret;
-	char tnam[NAME_LENGTH],tdis[DIS_LENGTH];
-	
-	ret=fscanf(sFile,"%s %s", tnam, tdis);
-	while(ret!=EOF) {
-		replace(tnam,'_',' ');
-		replace(tdis,'_',' ');
-		addPackage(tnam,tdis);
-		ret=fscanf(sFile,"%s %s", tnam, tdis);
-	}
-	
-	fclose(sFile);
 
 	for(unsigned int c=0;c<packages.size();c++) {
 		if(! packages[c]->isLoaded() ) {
@@ -2675,7 +2763,7 @@ void Structure::load() {
 		}
 	}
 
-	loadUserData();
+	//loadUserData();
 }
 
 void Structure::clear() {

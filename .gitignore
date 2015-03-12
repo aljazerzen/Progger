@@ -24,6 +24,3 @@
 
 # Executables
 *.out
-
-# Config and save files
-Config/*.lock
