@@ -7,13 +7,42 @@ Pack::Pack() {
 	xPos=0;
 	yPos=0;
 
-	cs=-1;
+	cs=-2;
 	qui=0;
 
-	keyboardLock=1;
+	keyboardLock=0;
 
 	strcpy(name , "Pack name");
 	ncu=strlen(name);
+	strcpy(dis , "Pack description");
+	dcu=strlen(dis);
+
+	packId=0;
+
+	DIR *dir;
+	struct dirent *ent;
+	if ((dir = opendir ("./")) != NULL) {
+
+		while ((ent = readdir (dir)) != NULL) {
+
+			char *dot=rindex(ent->d_name, '.');
+			char tdis[]="";
+
+			if(dot!=NULL && strcmp(dot,".pack")==0) {
+				int l=0;
+				sscanf(ent->d_name,"%d.pack",&l);
+				if( l>packId)
+					packId=l;
+			}
+		}
+
+		packId++;
+		closedir (dir);
+	} else {
+		/* could not open directory */
+		perror ("Pack directory");
+	}
+
 }
 
 void Pack::modString(char *src, int inp, int *cursor, int max) {
@@ -66,20 +95,41 @@ void Pack::fromFile(char *path) {
 		return;
 	}
 
-	strncpy(name,path,PACK_NAME_LEN);
-	*index(name,'.')='\0';
-
+	sscanf(path,"%d.pack",&packId);
+	
 	// check crc
 	int crc=calcCrc(sFile);
 	
 	if(crc == 0xff) {
-		fseek(sFile,0,SEEK_SET);
+		rewind(sFile);
 
-		do {
+		int l;
+		l=fgetc(sFile);
+		ncu=l;
+		for(int c=0;c<ncu && l!=EOF;c++) {
+			l=fgetc(sFile);
+			name[c]=l + LLIMIT;
+		}
+		name[ncu]='\0';
+		ncu=strlen(name);
+
+		l=fgetc(sFile);
+		dcu=l;
+		for(int c=0;c<dcu && l!=EOF;c++) {
+			l=fgetc(sFile);
+			dis[c]=l + LLIMIT;
+		}
+		dis[dcu]='\0';
+		dcu=strlen(dis);
+
+ 		do {
+ 			//printf("ok\n");
 			newLevel();
 		} while (!levels.back()->fromFile(sFile));
-		popLevel();
 
+		//printf("---\n");
+		popLevel();
+		//printf("&&&\n");
 	} else {
 		fprintf(stderr, "%s is not valid pack file\n", path);
 	}
@@ -87,21 +137,33 @@ void Pack::fromFile(char *path) {
 	fclose(sFile);
 }
 
-void Pack::toFile(char *path) {
+void Pack::toFile() {
 
 	if(levels.size()==0) {
 		return;
 	}
 
-	char *fpath = (char*) malloc(strlen(path)+7);
-	strcpy(fpath,path);
-	strcat(fpath,".pack");
+	char *fpath = (char*) malloc(8);
+	sprintf(fpath,"%02d.pack",packId);
 
 	FILE *sFile=fopen(fpath,"w");
 
 	if(sFile==NULL) {
 		fprintf(stderr,"Error writing user data to %s\n", fpath);
 		return;
+	}
+
+	// Name + Description
+	int l=strlen(name);
+	fputc(l,sFile);
+	for(int c=0;c<l;c++) {
+		fputc(name[c] - LLIMIT, sFile);
+	}
+
+	l=strlen(dis);
+	fputc(l,sFile);
+	for(int c=0;c<l;c++) {
+		fputc(dis[c] - LLIMIT, sFile);
 	}
 
 	for(unsigned int c=0;c<levels.size();c++) {
@@ -134,12 +196,12 @@ void Pack::gotoLevel(int i) {
 
 void Pack::gotoMain() {
 	mainMenu=1;
-	cs=0;
+	cs=levelId;
 }
 
 void Pack::quit() {
 	if(mainMenu) {
-		toFile(name);
+		toFile();
 		qui=1;
 	} else {
 		gotoMain();
@@ -149,17 +211,14 @@ void Pack::quit() {
 void Pack::moveCursor(int i) {
 	if(!mainMenu)
 		return;
-	if(cs+i<-1 || cs+i>=(int)levels.size()) 
+	if(cs+i<-2 || cs+i>=(int)levels.size()) 
 		return;
 	cs+=i;
-
-	if(cs < 0) {
-		keyboardLock = 1;
-	}
 }
 
 void Pack::newLevel() {
 	Level *newLevel = new Level();
+
 	levels.push_back(newLevel);
 }
 
@@ -179,6 +238,7 @@ void Pack::popLevel() {
 		return;
 
 	delete levels[levels.size()-1];
+
 	levels.pop_back();
 }
 
@@ -217,38 +277,55 @@ bool Pack::input(int inp) {
 }
 
 void Pack::inputMain(int inp) {
-	
-	if( keyboardLock) {
-		if ( inp == '\n') {
-			keyboardLock = 0;
-			cs=0;
-		} else {
-			keyboardLock = 1;
-			modString(name, inp, &ncu, PACK_NAME_LEN);
+	bool type = keyboardLock;
+
+	if(!keyboardLock) {
+		int i = tolower(inp);
+
+		switch(i) {
+			case 'q' :
+				quit();
+				return;
+			case 'n' :
+				newLevel();
+				gotoLevel(levels.size()-1);
+				break;
+			case KEY_DOWN:
+				moveCursor(1);
+				break;
+			case KEY_UP:
+				moveCursor(-1);
+				break;
+			case '\n':
+			case ' ':
+				gotoLevel(cs);
+				break;
+			default:
+				type=1;
 		}
-		return;
 	}
 
-
-	inp = tolower(inp);
-
-	switch(inp) {
-		case 'q' :
-			quit();
-			return;
-		case 'n' :
-			newLevel();
-			gotoLevel(levels.size()-1);
-			break;
-		case KEY_DOWN:
-			moveCursor(1);
-			break;
-		case KEY_UP:
-			moveCursor(-1);
-			break;
-		case '\n':
-		case ' ':
-			gotoLevel(cs);
+	if(type) {
+		switch(cs) {
+			case -2:
+				if ( inp == '\n') {
+					keyboardLock = 0;
+					cs=-1;
+				} else {
+					keyboardLock = 1;
+					modString(name, inp, &ncu, PACK_NAME_LEN);
+				}
+				break;
+			case -1:
+				if ( inp == '\n') {
+					keyboardLock = 0;
+					cs=0;
+				} else {
+					keyboardLock = 1;
+					modString(dis, inp, &dcu, PACK_DIS_LEN);
+				}
+				break;
+		}
 	}
 }
 
@@ -448,21 +525,29 @@ void Pack::redrawMain(int x, int y) {
 
 	move(y,x);
 	printw("%s", name);
+	move(y+1,x);
+	printw("%s", dis);
 
 	for(unsigned int c=0;c<levels.size();c++) {
-		move(y+c+2,x+2);
+		move(y+c+3,x+2);
 		printw("%s", levels[c]->name);
 	}
 }
 
 void Pack::getCursorPos(int *x, int *y) {
 	if(mainMenu) {
-		if(keyboardLock) {
-			*x = xPos + ncu;
-			*y = yPos;
-		} else {
-			*x = xPos;
-			*y = 2+ yPos + cs;
+		switch(cs) {
+			case -2:
+				*x = xPos + ncu;
+				*y = yPos;
+				break;
+			case -1:
+				*x = xPos + dcu;
+				*y = yPos + 1;
+				break;
+			default :
+				*x = xPos;
+				*y = 3 + yPos + cs;
 		}
 	} else {
 		levels[levelId]->getCursorPos(cs,x,y);

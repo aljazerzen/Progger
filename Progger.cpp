@@ -170,12 +170,12 @@ int GRID_MARGIN=10;
 
 // ----[ OPTIONS ]----
 
-bool SCREEN_FULLSCREEN = 0;
+bool SCREEN_FULLSCREEN = 1;
 
 int CURR_RESOLUTION=-1;
 
 // POS: 0 Program is on the top of the screen, 1 Program is at the bottom, -1: not shown
-int PROGRAM_POS=0;
+int PROGRAM_POS=1;
 
 bool ENABLE_TRANSITIONS=1;
 
@@ -494,11 +494,9 @@ class Structure {
 
 				vector<Puzzle*> puzzles;
 			public:
-				Package(char *na, char *d, const char *p) {
-					name[0]='\0';
-					strcat(name,na);	
-					dis[0]='\0';
-					strcat(dis,d);	
+				Package(const char *p) {
+					name[0]='\0';	
+					dis[0]='\0';	
 					path=p;
 					loaded=0;
 					done=0;
@@ -531,7 +529,7 @@ class Structure {
 		vector<Package*> packages;
 		const char *path;
 
-		void addPackage(char *name, char *dis);
+		void addPackage(char *filename);
 	public:
 		Structure(const char *pa);
 		void load();
@@ -650,6 +648,9 @@ void applySurface(SDL_Surface* src, SDL_Rect* clip, SDL_Surface* dst, SDL_Rect* 
 
 void loadSettings();
 void saveSettings();
+
+int loadMenus();
+void unloadMenus();
 
 void changeResolution(int resolution);
 void changeFullscreen(int fullscreen);
@@ -1834,7 +1835,7 @@ void Level::moveRobo(int xMove, int yMove) {
 	bool block=false;
 	if( xMove != 0 && ( (grd[ cX+xMove][cY+yMove] & 0x00ff) == TIL_VERTICAL || (grd[ cX][cY] & 0x00ff) == TIL_VERTICAL ))
 		block=true;
-	if( yMove != 0 && ( (grd[ cX+xMove][cY+yMove] & 0x00ff) == TIL_HORIZONTAL || (grd[ cX][cY] & 0x00ff) == TIL_VERTICAL )) 
+	if( yMove != 0 && ( (grd[ cX+xMove][cY+yMove] & 0x00ff) == TIL_HORIZONTAL || (grd[ cX][cY] & 0x00ff) == TIL_HORIZONTAL )) 
 		block=true;
 	if( (grd[ cX+xMove][cY+yMove] & 0x00ff) == TIL_BLOCK)
 		block=true;
@@ -2014,7 +2015,8 @@ void Level::onKeyPress(SDL_Event *e) {
 			close();
 			break;
 		case SDLK_w:
-			programPos=!programPos;
+			PROGRAM_POS=!PROGRAM_POS;
+			programPos=PROGRAM_POS;
 			recalculateNeeded=1;
 			fuTexture.free();
 			quTexture.free();
@@ -2351,6 +2353,8 @@ void Menu::onKeyPress(SDL_Event *e) {
 			break;
 		case SDLK_r:
 			packStructure.load();
+			unloadMenus();
+			loadMenus();
 			break;
 
 	}
@@ -2583,28 +2587,40 @@ unsigned char Structure::Package::calcCrc(FILE* file) {
 }
 
 void Structure::Package::load() {
-	char *fileName = (char*) malloc(strlen(path)+strlen(name)+6);
-	strcpy(fileName,path);
-	strcat(fileName,name);
-	strcat(fileName,".pack");
-
-	FILE *sFile=fopen(fileName,"r");
+	FILE *sFile=fopen(path,"r");
 
 	if(sFile==NULL) {
-		fprintf(stderr,"Pack at '%s' cannot be found\n", fileName);
+		fprintf(stderr,"Pack at '%s' cannot be found\n", path);
 		return;
 	}
 
 	int crc = calcCrc(sFile);
 
 	if(crc != 0xff && 0) {
-		fprintf(stderr,"Pack at '%s' is not a valid Progger pack\n", fileName);
+		fprintf(stderr,"Pack at '%s' is not a valid Progger pack\n", path);
 		return;
 	}
 
 	fseek(sFile,0,SEEK_SET);
 
-	int l=fgetc(sFile);
+	int l,i;
+	l=fgetc(sFile);
+	i=l;
+	for(int c=0;c<i && l!=EOF;c++) {
+		l=fgetc(sFile);
+		name[c]=l + LLIMIT;
+	}
+	name[i]='\0';
+
+	l=fgetc(sFile);
+	i=l;
+	for(int c=0;c<i && l!=EOF;c++) {
+		l=fgetc(sFile);
+		dis[c]=l + LLIMIT;
+	}
+	dis[i]='\0';
+
+	l=fgetc(sFile);
 
 	while(l!=EOF) {
 
@@ -2660,7 +2676,6 @@ void Structure::Package::load() {
 	}
 
 	fclose(sFile);
-	free(fileName);
 
 	loaded=1;
 }
@@ -2720,6 +2735,7 @@ void Structure::Package::setPuzzleDone(unsigned int puzzle, bool d) {
 	done=1;
 	for(unsigned int i=0;done && i<puzzles.size();i++) {
 		done=puzzles[i]->getDone();
+//		printf("%d %d\n", i,done);
 	}	
 }
 
@@ -2738,17 +2754,14 @@ void Structure::load() {
 		while ((ent = readdir (dir)) != NULL) {
 
 			char *dot=rindex(ent->d_name, '.');
-			char tdis[]="";
 
 			if(dot!=NULL && strcmp(dot,".pack")==0) {
-				int l = strlen(ent->d_name) - strlen(dot);
+				char *filename = (char*) malloc(sizeof(char)*(strlen(path)+strlen(ent->d_name)+2));
+				strcpy(filename,path);
+				strcat(filename,ent->d_name);
 
-				char *packName = (char*) malloc(sizeof(char)*(l+1));
-				strncpy(packName,ent->d_name,l);
+				addPackage(filename);
 
-				addPackage(packName,tdis);
-
-				free(packName);
 			}
 		}
 		closedir (dir);
@@ -2763,7 +2776,7 @@ void Structure::load() {
 		}
 	}
 
-	//loadUserData();
+	loadUserData();
 }
 
 void Structure::clear() {
@@ -2830,8 +2843,8 @@ void Structure::saveUserData() {
 	fclose(sFile);
 }
 
-void Structure::addPackage(char *name, char *dis) {
-	Package *newPack=new Package(name,dis,path);
+void Structure::addPackage(char *filename) {
+	Package *newPack=new Package(filename);
 	packages.push_back(newPack);
 }
 

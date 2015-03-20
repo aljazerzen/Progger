@@ -96,17 +96,23 @@ bool Level::fromFile(FILE *file) {
 	l=fgetc(file);
 
 	if(l==EOF) return 1;
-	for(int c=0;c<l;c++) {
-		name[c]=fgetc(file) + LLIMIT;
+	//printf("%d\n", l);
+	int i=l;
+	for(int c=0;c<i && l!=EOF;c++) {
+		l=fgetc(file);
+		name[c]=l + LLIMIT;
 	}
-	name[l]='\0';
+	name[i]='\0';
+	nc=strlen(name);
 
 	l=fgetc(file);
 	if(l==EOF) return 1;
-	for(int c=0;c<l;c++) {
+	i=l;
+	for(int c=0;c<i;c++) {
 		dis[c]=fgetc(file) + LLIMIT;
 	}
-	dis[l]='\0';
+	dis[i]='\0';
+	dc=strlen(dis);
 
 	// Level data 
 	width=fgetc(file);
@@ -129,6 +135,7 @@ bool Level::fromFile(FILE *file) {
 	// ----[ Allowed instructions ]----
 	int alc;
 	alc = fgetc(file);
+	//printf("%d\n", alc);
 
 	if(alc==0) {
 		setIns();
@@ -143,6 +150,8 @@ bool Level::fromFile(FILE *file) {
 	// ----[ Functions sizes ]----
 	int fsize;
 	fsize = fgetc(file);
+	//printf("%d\n", fsize);
+
 	if(l==EOF) return 1;
 	funct.resize(fsize);
 	

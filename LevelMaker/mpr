@@ -1,3 +1,4 @@
 #!/bin/bash
 
+#g++ LevelMaker.cpp Level.cpp Pack.cpp -l ncurses -o LevelMaker
 g++ LevelMaker.cpp Level.cpp Pack.cpp -l ncurses -o LevelMaker && ./LevelMaker "$@"

@@ -63,7 +63,8 @@ int main(int argc, char **argv) {
 		move(cy,cx);
 
 		inp = getch();
-		quit=pck.input(inp);
+		if(inp!=-1)
+			quit=pck.input(inp);
 		
 	}
 

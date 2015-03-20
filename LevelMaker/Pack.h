@@ -1,13 +1,17 @@
 #include <vector>
 #include <ctype.h>
+#include <dirent.h>
 #include "Level.h"
 
 using namespace std;
 
 const int PACK_NAME_LEN = 32;
+const int PACK_DIS_LEN = 64;
 
 class Pack {
 	bool mainMenu;
+	int packId;
+
 	int levelId;
 
 	int xPos,yPos;
@@ -21,6 +25,9 @@ class Pack {
 	char name[PACK_NAME_LEN];
 	int ncu;
 
+	char dis[PACK_DIS_LEN];
+	int dcu;
+
 	void modString(char *src, int inp, int *cursor, int max);
 
 public:
@@ -29,7 +36,7 @@ public:
 	unsigned char calcCrc(FILE* file);
 
 	void fromFile(char *path);
-	void toFile(char *path);
+	void toFile();
 
 	vector<Level*> levels;
 
