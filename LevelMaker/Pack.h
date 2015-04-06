@@ -8,6 +8,9 @@ using namespace std;
 const int PACK_NAME_LEN = 32;
 const int PACK_DIS_LEN = 64;
 
+const int KEY_BINDS = 7;
+const int CURSOR_STATES = 7;
+
 class Pack {
 	bool mainMenu;
 	int packId;

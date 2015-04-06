@@ -1,5 +1,25 @@
 #include "Pack.h"
 
+char keyBinds[KEY_BINDS][2][32] = {
+	{"q","Quit"},
+	{"n","New Level"},
+	{"Del","Remove Level"},
+	{"Enter","Enter level"},
+	{"Space","Enter level"},
+	{"+","Move level up"},
+	{"-","Move level down"}
+};
+
+char cursorStates[CURSOR_STATES][20] = {
+"Grid editing",
+"Grid resizing",
+"Instructions",
+"Functions",
+"Name",
+"Description",
+"Setting cursor"
+};
+
 Pack::Pack() {
 	mainMenu=1;
 	levelId=0;
@@ -300,6 +320,20 @@ void Pack::inputMain(int inp) {
 			case ' ':
 				gotoLevel(cs);
 				break;
+			case 263:
+				if(cs>0) {
+					delLevel(cs);
+					moveCursor(0);
+				} else
+					type=1;
+				break;
+			case '+': 
+				movLevel(cs,1);
+				moveCursor(1);
+				break;
+			case '-': 
+				moveCursor(-1);
+				break;
 			default:
 				type=1;
 		}
@@ -490,31 +524,8 @@ void Pack::redraw(int x, int y) {
 		color_set(1,NULL);
 
 		move(x,y);
-		switch(cs) {
-			case 0: 
-				printw(" --[ Grid editing   ]-- ");
-				break;
-			case 1: 
-				printw(" --[ Grid resizing  ]-- ");
-				break;
-			case 2: 
-				printw(" --[ Instructions   ]-- ");
-				break;
-			case 3: 
-				printw(" --[ Functions      ]-- ");
-				break;
-			case 4:
-				printw(" --[ Name           ]-- ");
-				break;
-			case 5:
-				printw(" --[ Description    ]-- ");
-				break;
-			case 6:
-				printw(" --[ Setting cursor ]-- ");
-				break;
-		}
-
-
+		printw(" --[ %-15.15s ]-- ", cursorStates[cs]);
+		
 		levels[levelId]->redraw(x, y+2);
 	}
 }
@@ -531,6 +542,14 @@ void Pack::redrawMain(int x, int y) {
 	for(unsigned int c=0;c<levels.size();c++) {
 		move(y+c+3,x+2);
 		printw("%s", levels[c]->name);
+	}
+
+	move(levels.size()+3+y,x);
+	printw("------------------");
+
+	for(unsigned int c=0;c<KEY_BINDS;c++) {
+		move(levels.size()+5+y+c,x);
+		printw("[%5.5s] %s", keyBinds[c][0],keyBinds[c][1]);
 	}
 }
 

@@ -4,13 +4,14 @@ Logo				35 	5 	260	60	0 	0	0
 Play				110 70 	100 30 	2 	100	60		 
 Options				110 105 100 30 	6 	150	90
 Exit				110 145 100 30 	1 	0	60
-6			
+7			
 Options				110	10 	100 30 	0 	150	90
 Back 				50	10	25	30 	5	125	90
 ChangeResolution 	30  50  260 20 	7 	0	413
 Fullscreen 			30  80  260 20 	9 	0	172
 Transition 		 	30  110 260 20 	10 	0	212
 WaitAt	 		 	30  140 260 20 	11 	0	252
+Queue				30	170	260	20 	12 	0	433
 7
 ChangeResolution 	80 10  183 21 	0 	0	392
 Back 				50	10	25	21 	5	100	90

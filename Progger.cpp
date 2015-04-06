@@ -113,7 +113,7 @@ const int PROGRAM_IB_PADDING=4;
 const int PROGRAM_CB_PADDING=4;
 
 //The frame rate
-const int FRAMES_PER_SECOND = 50;
+const int FRAMES_PER_SECOND = 120;
 
 const SDL_Rect CB_POSITIONS[]= {
 	{0,0+	0	,50,50},
@@ -176,6 +176,8 @@ int CURR_RESOLUTION=-1;
 
 // POS: 0 Program is on the top of the screen, 1 Program is at the bottom, -1: not shown
 int PROGRAM_POS=1;
+
+int QUEUE=0;
 
 bool ENABLE_TRANSITIONS=1;
 
@@ -1518,10 +1520,9 @@ void Level::save() {
 
 void Level::win() {
 	packStructure.setPuzzleDone(levelId & 0xFF, levelId >> 8, 1);
-	printf("%d\n", levelId);
 	menus[packMenuIndex + (levelId & 0xff) + 1]->makeTexture((levelId >> 8)+2);
 
-	stop(0);
+//	stop(0);
 	save();
 
 	tState += (1<<12);
@@ -1703,8 +1704,8 @@ void Level::start() {
 		loadFunction(&nextIns, 0);
 
 		if(insCount>0) {
-			started=1;
-			paused=0;
+			started=1
+;			paused=0;
 
 			cTicks=ticksAStep;
 		}
@@ -1716,10 +1717,12 @@ void Level::stop(int stopCode) {
 	started=0;
 	paused=0;
 	cTicks=0;
-	gridReset(0);
 
-	if(stopCode > 0)
+	if(stopCode > 0) {
+		gridReset(0);
+
 		popupHandler->addPopup(stopMessages[stopCode]);
+	}
 }
 
 void Level::togglePause() {
@@ -1784,17 +1787,19 @@ void Level::tick() {
 
 	if(programH) {
 		//alter queue transition state
-		if((!started && quTState>0) || (started && quTState<32)) {
-			if(ENABLE_TRANSITIONS) {
-				quTState-=((!started * 2)-1)*120/FRAMES_PER_SECOND;
-				if(quTState<0) quTState=0;
-				if(quTState>32) quTState=32;
-			} else {
-				quTState=(started==1)*32;
-			}
-			quTMod=quTState*quTState;
+		if(QUEUE) {
+			if((!started && quTState>0) || (started && quTState<32)) {
+				if(ENABLE_TRANSITIONS) {
+					quTState-=((!started * 2)-1)*120/FRAMES_PER_SECOND;
+					if(quTState<0) quTState=0;
+					if(quTState>32) quTState=32;
+				} else {
+					quTState=(started==1)*32;
+				}
+				quTMod=quTState*quTState;
 
-			recalculateNeeded=1;
+				recalculateNeeded=1;
+			}
 		}
 
 		//alter instruction bar transition state
@@ -1832,6 +1837,10 @@ void Level::tick() {
 }
 
 void Level::moveRobo(int xMove, int yMove) {
+	if(cX+xMove>=gxSize || cX+xMove<0 || cY+yMove>=gySize || cY+yMove<0) {
+		stop(1);
+	}
+
 	bool block=false;
 	if( xMove != 0 && ( (grd[ cX+xMove][cY+yMove] & 0x00ff) == TIL_VERTICAL || (grd[ cX][cY] & 0x00ff) == TIL_VERTICAL ))
 		block=true;
@@ -1845,9 +1854,6 @@ void Level::moveRobo(int xMove, int yMove) {
 		cY+=yMove;
 	}
 
-	if(cX>=gxSize || cX<0 || cY>=gySize || cY<0) {
-		stop(1);
-	}
 	if(grd[cX][cY]==TIL_BLANK) {
 		stop(2);
 	}
@@ -2207,6 +2213,7 @@ void Menu::addElement(const char *n, int x, int y, int w, int h, int ev, int px,
 		case 9:
 		case 10:
 		case 11:
+		case 12:
 			newEle.clip2.y+=20*MENU_SCALE_FACTOR;
 	}
 
@@ -2238,6 +2245,10 @@ void Menu::makeTexture(int eleIndex) {
 			break;
 		case 11:
 			if(!WAIT_ONLY_ON_MOVE) 
+				clip=ele[eleIndex].clip2;
+			break;
+		case 12:
+			if(QUEUE) 
 				clip=ele[eleIndex].clip2;
 			break;
 	}
@@ -2477,10 +2488,12 @@ void Menu::cursorSelect() {
 			makeTexture(cursor);
 			saveSettings();
 			break;
-
-
-		//default:
-//			if(ele[cursor].event >= 10 && ele[cursor].event <= 21)
+		case 12:
+			//toggle wait at
+			QUEUE = !QUEUE;
+			makeTexture(cursor);
+			saveSettings();
+			break;
 	}
 }
 
@@ -3170,7 +3183,7 @@ void loadSettings() {
 	//SCREEN_FULLSCREEN, CURR_RESOLUTION, PROGRAM_POS, ENABLE_TRANSITIONS, WAIT_ONLY_ON_MOVE, SPEED
 
 	char crc;
-	char inp_SCR,inp_CUR,inp_PRO,inp_ENA,inp_WAI,inp_SPE;
+	char inp_SCR,inp_CUR,inp_PRO,inp_ENA,inp_WAI,inp_SPE,inp_QUE;
 
 	fscanf(sFile,"%c", &crc);
 	
@@ -3180,6 +3193,7 @@ void loadSettings() {
 	fscanf(sFile,"%c", &inp_ENA);
 	fscanf(sFile,"%c", &inp_WAI);
 	fscanf(sFile,"%c", &inp_SPE);
+	fscanf(sFile,"%c", &inp_QUE);
 
 	if(	(inp_SCR+inp_CUR+inp_PRO+inp_ENA+inp_WAI+inp_SPE+crc) % 3 == 0) {
 		SCREEN_FULLSCREEN= inp_SCR;
@@ -3188,6 +3202,7 @@ void loadSettings() {
 		ENABLE_TRANSITIONS= inp_ENA;
 		WAIT_ONLY_ON_MOVE= inp_WAI;
 		SPEED= inp_SPE;
+		QUEUE= inp_QUE;
 	}
 	
 	fclose(sFile);
@@ -3217,6 +3232,7 @@ void saveSettings() {
 	fprintf(sFile,"%c",(char) ENABLE_TRANSITIONS);
 	fprintf(sFile,"%c",(char) WAIT_ONLY_ON_MOVE);
 	fprintf(sFile,"%c",(char) SPEED);
+	fprintf(sFile,"%c",(char) QUEUE);
 	fprintf(sFile,"\n");
 	
 	fclose(sFile);
