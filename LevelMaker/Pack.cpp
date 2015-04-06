@@ -231,8 +231,14 @@ void Pack::quit() {
 void Pack::moveCursor(int i) {
 	if(!mainMenu)
 		return;
-	if(cs+i<-2 || cs+i>=(int)levels.size()) 
+	if(cs+i<-2) {
+		cs = -2;
 		return;
+	}
+	if(cs+i==(int)levels.size()) {
+		cs = (int)levels.size() -1;
+		return;
+	}
 	cs+=i;
 }
 
@@ -320,7 +326,8 @@ void Pack::inputMain(int inp) {
 			case ' ':
 				gotoLevel(cs);
 				break;
-			case 263:
+			case KEY_DC:
+			case KEY_BACKSPACE:
 				if(cs>0) {
 					delLevel(cs);
 					moveCursor(0);
@@ -332,6 +339,7 @@ void Pack::inputMain(int inp) {
 				moveCursor(1);
 				break;
 			case '-': 
+				movLevel(cs,0);
 				moveCursor(-1);
 				break;
 			default:

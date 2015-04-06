@@ -6,11 +6,8 @@ Moving with instructions.
 
 # To do
 
-- make popup api
-- save settings
-- make level maker
+- make a help system&menu
 - add more tiles
-- add more instructions
 - add more levels (import)
 
 # Options menu 

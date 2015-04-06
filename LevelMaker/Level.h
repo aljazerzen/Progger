@@ -4,8 +4,8 @@
 #include <stdlib.h>
 
 const int CLRS = 5;
-const int INSTYPES = 3;
-const char INSTYPE[]="|><";
+const int INSTYPES = 8;
+const char INSTYPE[]=".|><1234";
 
 const int TILES = 6;
 const char TILE[] = ".+*#|-";

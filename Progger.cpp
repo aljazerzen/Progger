@@ -19,6 +19,7 @@
 #include <time.h>
 #include <vector>
 #include <dirent.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -47,9 +48,12 @@ const int INS_BLANK 	= 0;
 const int INS_FORWARD	= 1;
 const int INS_LEFT		= 2;
 const int INS_RIGHT		= 3;
-//		  INS_SETCOLOR_N= 4+N;
+const int INS_SETCL1	= 4;
+const int INS_SETCL2	= 5;
+const int INS_SETCL3	= 6;
+const int INS_SETCL4	= 7;
 //		  INS_FUNCT_N	= 20+N;
-const int INS_TYPE_COUNT= 4; //without fuctions and colors
+const int INS_TYPE_COUNT= 8;
 const int COLOR_NUMBER 	= 5;
 
 const int INS_SPRITE_TYPES=15;
@@ -387,6 +391,7 @@ class Level {
 
 		void moveRobo(int x, int y);
 		void rotateRobo(int d);
+		void colorTile(int cl);
 
 		void onClick(SDL_Event *e);
 		void onMouseMove(SDL_Event *e);
@@ -496,12 +501,14 @@ class Structure {
 
 				vector<Puzzle*> puzzles;
 			public:
-				Package(const char *p) {
+				int id;
+				Package(const char *p, int i) {
 					name[0]='\0';	
 					dis[0]='\0';	
 					path=p;
 					loaded=0;
 					done=0;
+					id=i;
 				}
 
 				char* getName() {return name;}
@@ -531,7 +538,9 @@ class Structure {
 		vector<Package*> packages;
 		const char *path;
 
-		void addPackage(char *filename);
+		void addPackage(char *filename, int id);
+		static bool cmpPackages(Package *a, Package *b);
+		void sortPacks();
 	public:
 		Structure(const char *pa);
 		void load();
@@ -709,13 +718,10 @@ bool quit = false;
 int insToSprite(int ins) {
 	int type=ins & 0xff;
 	int color=(ins & 0xff00)>>8;
-	//if(ins< INS_TYPE_COUNT+COLOR_NUMBER) {
-	if(type<INS_TYPE_COUNT) {
+	if(type< INS_TYPE_COUNT) {
 		return type+color*INS_SPRITE_TYPES;
 	}
 	if(type>=20) {
-		//			change that when adding instructions
-		//              / 
 		return type-20+ INS_TYPE_COUNT + color*INS_SPRITE_TYPES;
 	}
 	return 0;
@@ -1188,6 +1194,7 @@ SDL_Rect Level::calcPositionsGrid(int px, int py, int ax, int ay) {
 }
 
 SDL_Rect Level::calcPositionsQueue(int px, int py, int ax, int ay) 	{
+	bgTexture.free();
 	if(!quTState) {
 		SDL_Rect ret={ ax, ay, px, 0 };
 		return ret;
@@ -1206,8 +1213,6 @@ SDL_Rect Level::calcPositionsQueue(int px, int py, int ax, int ay) 	{
 
 	//height and alpha change due to transition (quTMod==0 > height=0, quTMod==1024 > height=TILE_SIZE+PADDING, linear)
 	quAlpha=quTMod*0xFF/1024;
-
-	bgTexture.free();
 
 	SDL_Rect ret = {quX, quY, quW, quTMod*PROGRAM_QT_SIZE/1024};
 	return ret;
@@ -1447,12 +1452,12 @@ void Level::rebuildIbTexture() {
 	ibTexture.setBlendMode(SDL_BLENDMODE_BLEND);
 	
 
-	SDL_FillRect(canvas, NULL, SDL_MapRGBA(canvas->format,0xAF,0xAF,0xAF,0x6F));
+	SDL_FillRect(canvas, NULL, SDL_MapRGBA(canvas->format,0x50,0x50,0x50,0xFF));
 	
 	if(ibCc>=0 && ibCt>=0) {
 		offset.x=ibCt*(INS_SPRITE_SIZE+2*PROGRAM_IB_PADDING)+PROGRAM_IB_PADDING;
 		offset.y=ibCc*(INS_SPRITE_SIZE+2*PROGRAM_IB_PADDING)+PROGRAM_IB_PADDING;
-		SDL_FillRect(canvas, &offset, SDL_MapRGBA(canvas->format,0xAF,0xAF,0xAF,0xFF));
+		SDL_FillRect(canvas, &offset, SDL_MapRGBA(canvas->format,0xCF,0xCF,0xCF,0xFF));
 	}
 	ibBTexture.loadFromSurface(canvas);
 	ibBTexture.setBlendMode(SDL_BLENDMODE_BLEND);
@@ -1766,6 +1771,13 @@ void Level::tick() {
 							rotateRobo(+1);
 							ok=0;
 							break;
+						case INS_SETCL1:
+						case INS_SETCL2:
+						case INS_SETCL3:
+						case INS_SETCL4:
+							colorTile(ins-INS_SETCL1+1);
+							ok=0;
+							break;
 						default:
 							if(ins >= 20) {
 								if(ins-20>=0 && ins-20<fCnt) {
@@ -1865,6 +1877,7 @@ void Level::moveRobo(int xMove, int yMove) {
 		if(starsToGet==0) {
 			win();
 		}
+		gTexture.free();
 	}
 
 	if(!block) {
@@ -1872,7 +1885,6 @@ void Level::moveRobo(int xMove, int yMove) {
 		cYoffset=(-1) * gridS * yMove;
 		cXoffsetLM=cXoffset;
 		cYoffsetLM=cYoffset;
-		gTexture.free();
 	}
 }
 
@@ -1880,6 +1892,13 @@ void Level::rotateRobo(int dMove) {
 	cD=(cD+dMove+4)%4;
 	cDoffset=90*dMove*(-1);
 	cDoffsetLM=cDoffset;
+}
+
+void Level::colorTile(int cl) {
+	if(cl<0 || cl>COLOR_NUMBER) 
+		return;
+	grd[cX][cY] = ( grd[cX][cY] && 0xFF ) | (cl << 8);
+	gTexture.free();
 }
 
 void Level::onClick(SDL_Event *e) {
@@ -2767,14 +2786,20 @@ void Structure::load() {
 		while ((ent = readdir (dir)) != NULL) {
 
 			char *dot=rindex(ent->d_name, '.');
-
+			
 			if(dot!=NULL && strcmp(dot,".pack")==0) {
-				char *filename = (char*) malloc(sizeof(char)*(strlen(path)+strlen(ent->d_name)+2));
-				strcpy(filename,path);
-				strcat(filename,ent->d_name);
+				*dot='\0';
+				int id=-1;
+				sscanf(ent->d_name,"%d",&id);
 
-				addPackage(filename);
+				if(id > 0) {
+					*dot='.';
+					char *filename = (char*) malloc(sizeof(char)*(strlen(path)+strlen(ent->d_name)+2));
+					strcpy(filename,path);
+					strcat(filename,ent->d_name);
 
+					addPackage(filename,id);
+				}
 			}
 		}
 		closedir (dir);
@@ -2782,6 +2807,8 @@ void Structure::load() {
 		/* could not open directory */
 		perror ("Pack directory");
 	}
+
+	sortPacks();
 
 	for(unsigned int c=0;c<packages.size();c++) {
 		if(! packages[c]->isLoaded() ) {
@@ -2856,9 +2883,17 @@ void Structure::saveUserData() {
 	fclose(sFile);
 }
 
-void Structure::addPackage(char *filename) {
-	Package *newPack=new Package(filename);
+void Structure::addPackage(char *filename, int id) {
+	Package *newPack=new Package(filename,id);
 	packages.push_back(newPack);
+}
+
+bool Structure::cmpPackages(Package *a, Package *b) {
+	return a->id < b->id;
+}
+
+void Structure::sortPacks() {
+	std::sort(packages.begin(),packages.end(),(bool (*) (Structure::Package*, Structure::Package*)) cmpPackages);
 }
 
 int Structure::getPackageCount() {
