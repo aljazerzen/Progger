@@ -20,3 +20,10 @@ Moving with instructions.
 - Wait [on move \ every instruction ]
 - Queue [ on \ off ]
 
+# Help
+## Tuturial
+*One tutorial level available from main menu*
+
+## Popups in levels (when new elements are added)
+
+## Help (main menu entry)
