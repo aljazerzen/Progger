@@ -130,12 +130,14 @@ const SDL_Rect CB_POSITIONS[]= {
 const int DEF_CB_WIDTH=58;
 const int DEF_CB_HEIGHT=316;
 
-int DEF_POP_TTC = 5000;
+int DEF_POP_TTC = 3;
 int DEF_POP_PAD = 5;
 int DEF_POP_LINE_SPACING = 3;
 int DEF_POP_X = 10;
 int DEF_POP_Y = 10;
 bool DEF_POP_COC = 1;
+
+int DEF_HELP_STC = 60;
 
 char stopMessages[][64] = {
 	"",
@@ -573,10 +575,13 @@ class Popup{
 		SDL_Rect box;
 		cTexture texture;
 
+		int startingOffset;
+
 		int ticksToClose;
 
 		bool active;
 		bool closeOnClick;
+		int closeOnChange;
 
 		char lines[256][256]; 
 		int linesCount;
@@ -592,10 +597,11 @@ class Popup{
 		bool backgroundColorIsFromTime;
 		bool centerx;
 
+		// stc : seconds to close
 		Popup(int x, int y, int stc);
-
 		Popup(int x, int y, SDL_Surface *src, int stc);
 		Popup(int x, int y, char *text, int maxW, TTF_Font *fnt, int fntSize, SDL_Color tClr, SDL_Color bClr, int stc);
+
 		void init(int x, int y, int stc);
 
 		void loadLines(char *text, int maxW);
@@ -615,6 +621,7 @@ class Popup{
 		void moveTo(SDL_Rect *pos);
 		void setCloseOnClick();
 		void setCloseOnClick(bool coc);
+		void setcloseOnChange();
 };
 
 class PopupHandler {
@@ -644,6 +651,7 @@ class PopupHandler {
 		void addPopup(int x, int y);
 		void addPopup(int x, int y, SDL_Surface *src);
 		void addPopup(char *text);
+		void addPopup(Popup* pop);
 
 		Popup* getPopup(int i);
 		Popup* getLastPopup();
@@ -653,6 +661,20 @@ class PopupHandler {
 
 		void onClick(SDL_Event *e);
 };
+
+
+// ---- help loader
+bool matchLevel(char *levelName, char *packName, const char *wlevelName, const char *wpackName);
+	
+// hn: help number
+void genHelp(int hn);
+
+Popup* preparePopup(int x, int y, SDL_Surface *src);
+
+// call this (popup will be automatically added)
+void fetchHelp(char *levelName, char *packName);
+
+// ---- end of help loader
 
 void applyTextToSurface(int x, int y, SDL_Surface* dst, const char *text, TTF_Font* font, SDL_Color *color,int alpha=255);
 void applySurface(SDL_Surface* src, SDL_Rect* clip, SDL_Surface* dst, SDL_Rect* offset);
@@ -963,6 +985,8 @@ Level::Level(int id, char *co, char *p, int pP) {
 	if(gridReset(1)==0) {
 		loaded=1;
 	}
+
+	fetchHelp( packStructure.getPuzzleName(levelId & 0xff,levelId>>8), packStructure.getPackageName(levelId & 0xff));
 }
 
 void Level::loadFunction(insEle **e, int f) {
@@ -1535,9 +1559,9 @@ void Level::win() {
 		close();
 		popupHandler->addPopup(packCompleteMessage);
 	} else {
+		stop(0);
 		popupHandler->addPopup(winMessage);
 	}
-
 }
 
 int Level::getLevelId() {
@@ -2513,6 +2537,10 @@ void Menu::cursorSelect() {
 			makeTexture(cursor);
 			saveSettings();
 			break;
+		case 13:
+			//tutorial
+			tState = 2 | (0x0<<4);
+			break;
 	}
 }
 
@@ -2976,11 +3004,13 @@ Popup::Popup(int x, int y, char *text, int maxW, TTF_Font *fnt, int fntSize, SDL
 void Popup::init(int x, int y, int stc) {
 	box.x=x;
 	box.y=y;
+	startingOffset=20;
 	PADDING=5;
 	LINE_SPACING=3;
-	ticksToClose=FRAMES_PER_SECOND * stc / 1000;
+	ticksToClose=FRAMES_PER_SECOND * stc;
 	active=1;
 	closeOnClick=0;
+	closeOnChange=-1;
 }
 
 void Popup::loadLines(char *text, int maxW) {
@@ -3060,7 +3090,7 @@ void Popup::onClick(SDL_Event *e) {
 		// is clicked
 
 		if( closeOnClick ) {
-			close();
+			ticksToClose=64;
 			e->button.x=0;
 			e->button.y=0;
 		}
@@ -3069,7 +3099,12 @@ void Popup::onClick(SDL_Event *e) {
 
 void Popup::show() {
 	if(active && texture.isLoaded()) {
-		texture.render(box.x,box.y,&box);
+		int offset = 0;
+		if( ticksToClose < 32)
+			offset = 20 * (32-ticksToClose)/32;
+
+		texture.setColor(backgroundColor.r,backgroundColor.g,backgroundColor.b);
+		texture.render(box.x,box.y+offset-startingOffset,&box);
 	}
 }
 
@@ -3077,12 +3112,14 @@ void Popup::tick() {
 	if(!active)
 		return;
 
+	if(closeOnChange!=-1 && closeOnChange!=state)
+		close();
+
 	if(texture.isLoaded() && backgroundColorIsFromTime) {
 		int color=getColor();
 		backgroundColor.r=(color>>16) & 0xff;
 		backgroundColor.g=(color>>8) & 0xff;
 		backgroundColor.b=color & 0xff;
-		makeFromLines();
 	}
 
 	if(centerx) {
@@ -3090,12 +3127,14 @@ void Popup::tick() {
 	}
 
 	ticksToClose--;
-	if(ticksToClose<64) {
-		texture.setAlpha(ticksToClose*4);
+	if(ticksToClose<32) {
+		texture.setAlpha(ticksToClose*8);
 	}
 	if(ticksToClose<0) {
 		close();
 	}
+	if(startingOffset)
+		startingOffset--;
 }
 
 bool Popup::isActive() {
@@ -3117,6 +3156,10 @@ void Popup::setCloseOnClick() {
 
 void Popup::setCloseOnClick(bool coc) {
 	closeOnClick=coc;
+}
+
+void Popup::setcloseOnChange() {
+	closeOnChange=state;
 }
 
 PopupHandler::PopupHandler() {
@@ -3160,11 +3203,26 @@ void PopupHandler::addPopup(int x, int y, SDL_Surface *src) {
 }
 
 void PopupHandler::addPopup(char *text) {
-	Popup *newPopup=new Popup(DEF_X, DEF_Y, text, SCREEN_WIDTH - DEF_PADDING *2, defFont, defFontSize, defTextColor, defBackgroundColor , defTTC);
+	int y=DEF_Y,done=0;
+	while(!done) {
+		done=1;
+		for(unsigned int i=0;i<popups.size();i++) {
+			if( popups[i]->getBox().y==y ) {
+				y+=popups[i]->getBox().h+10;
+				done=0;
+			}
+		}
+	}
+
+	Popup *newPopup=new Popup(DEF_X, y, text, SCREEN_WIDTH - DEF_PADDING *2, defFont, defFontSize, defTextColor, defBackgroundColor , defTTC);
 	newPopup->backgroundColorIsFromTime=defBackgroundColorIsFromTime;
 	newPopup->setCloseOnClick(DEF_COC);
 	newPopup->centerx=defCenterx;
 	popups.push_back(newPopup);
+}
+
+void PopupHandler::addPopup(Popup* pop) {
+	popups.push_back(pop);
 }
 
 Popup* PopupHandler::getPopup(int i) {
@@ -3201,6 +3259,58 @@ void PopupHandler::onClick(SDL_Event *e) {
 			popups[c]->onClick(e);
 		}
 	}
+}
+
+bool matchLevel(char *levelName, char *packName, const char *wlevelName, const char *wpackName) {
+	return strcmp(levelName,wlevelName)==0 && strcmp(packName,wpackName)==0;
+}
+
+void genHelp(int hn) {
+	SDL_Surface *canvas;
+	int msf=MENU_SCALE_FACTOR;
+	SDL_Color black = {0x00,0x0,0x0,0x0};
+
+	switch(hn) {
+		case 1:
+			canvas = SDL_CreateRGBSurface(0, 203*msf, 80*msf, SCREEN_BPP, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
+			SDL_FillRect(canvas,NULL,SDL_MapRGBA(canvas->format, 0xAF, 0xAF, 0xAF, 0xbb));
+			applyTextToSurface(2*msf,2*msf,canvas,"Welcome to your first level!",fontNormal,&black,0xff);
+			applyTextToSurface(2*msf,15*msf,canvas,"Let's get started! To clear a level you have to",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,24*msf,canvas,"collect all the stars on the grid you see in the middle.",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,33*msf,canvas,"You can do that by telling your robot where to move.",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,42*msf,canvas,"Start simply by clicking on the squares down below and ",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,51*msf,canvas,"selecting the arrow. This will tell the robot to make a ",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,60*msf,canvas,"step forward. Then just press the upper button on the left.",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,69*msf,canvas,"CLICK TO CLOSE",fontTiny,&black,0xff);
+			popupHandler->addPopup(preparePopup(45*msf,1*msf,canvas));
+		break;
+		case 2:
+			canvas = SDL_CreateRGBSurface(0, 200*msf, 15*msf, SCREEN_BPP, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
+			SDL_FillRect(canvas,NULL,SDL_MapRGBA(canvas->format, 0xAF, 0xAF, 0xAF, 0xbb));
+			applyTextToSurface(2*msf,2*msf,canvas,"Turn the robot to the right when needed...",fontSmall,&black,0xff);
+			applyTextToSurface(2*msf,15*msf,canvas,"",fontSmall,&black,0xff);
+			popupHandler->addPopup(preparePopup(200*msf,150*msf,canvas));
+		break;
+	}
+
+	SDL_FreeSurface(canvas);
+}
+
+Popup* preparePopup(int x, int y, SDL_Surface *src) {
+	Popup *newPopup=new Popup(x, y, src, DEF_HELP_STC);
+	newPopup->backgroundColorIsFromTime=1;
+	newPopup->setCloseOnClick();
+	newPopup->setcloseOnChange();
+	return newPopup;
+}
+
+void fetchHelp(char *levelName, char *packName) {
+	if(matchLevel(levelName,packName,"Tutorial","TutorialPack")) genHelp(0);
+	if(matchLevel(levelName,packName,"The start","First steps")) genHelp(1);
+	if(matchLevel(levelName,packName,"Concept","First steps")) genHelp(2);
+	if(matchLevel(levelName,packName,"Tutorial","TutorialPack")) genHelp(3);
+	if(matchLevel(levelName,packName,"Tutorial","TutorialPack")) genHelp(4);
+	if(matchLevel(levelName,packName,"Tutorial","TutorialPack")) genHelp(5);
 }
 
 void loadSettings() {

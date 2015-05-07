@@ -3,3 +3,4 @@ Name=Progger
 Type=Application
 Exec=SDL -!
 Version=1.0
+Icon=/home/aljaz/.local/share/icons/Progger.png
