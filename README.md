@@ -30,6 +30,14 @@ Moving with instructions.
 
  - repetition (function ins)
  - functions
+But what instruction with number does
+is actually repeats the whole line of
+instructions. When this line ends it
+resumes previous line. 
+To see how this works go to options and
+switch queue on. You can also slow down 
+the program.
+
  - color tiles
  - coloring tiles
  - full block tiles
